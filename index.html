@@ -399,7 +399,7 @@ let currentKospiSort = 'volume', currentKosdaqSort = 'volume';
 
 // 네이버 금융 API 엔드포인트
 const PROXY = 'https://api.allorigins.win/get?url=';
-const NAVER_BASE = 'https://m.stock.naver.com';
+const NAVER_BASE = 'https://api.stock.naver.com'; // 실제 네이버 앱 API (CORS 허용)
 
 // 코스피/코스닥 인기 종목 코드 목록
 const STOCK_CODES = {
@@ -432,25 +432,36 @@ const STOCK_CODES = {
 // ── 숫자 파싱 헬퍼 ──────────────────────────────────────────
 function parseNum(v) {
   if (v === null || v === undefined) return 0;
-  return parseFloat(String(v).replace(/,/g, '').replace(/\+/g, '')) || 0;
+  return parseFloat(String(v).replace(/,/g, '').replace(/[+]/g, '')) || 0;
 }
 
-// ── CORS 프록시 fetch (allorigins → corsproxy fallback) ──────
-const PROXIES = [
-  url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-];
+// ── CORS 프록시 목록 (순서대로 시도) ─────────────────────────
+// api.stock.naver.com 은 CORS 허용 → 프록시 없이 직접 호출 시도
+// 실패 시 여러 프록시로 fallback
+async function proxyFetch(directUrl, opt = {}) {
+  const proxies = [
+    // 1순위: 직접 호출 (CORS 허용 도메인)
+    () => fetch(directUrl, { signal: AbortSignal.timeout(6000) })
+          .then(async r => { if(!r.ok) throw new Error(r.status); return r.json(); }),
+    // 2순위: allorigins
+    () => fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(directUrl)}`,
+               { signal: AbortSignal.timeout(8000) })
+          .then(r => r.json())
+          .then(j => { const raw = j.contents; if(!raw) throw new Error('empty'); return JSON.parse(raw); }),
+    // 3순위: corsproxy.io
+    () => fetch(`https://corsproxy.io/?${encodeURIComponent(directUrl)}`,
+               { signal: AbortSignal.timeout(8000) })
+          .then(r => r.json()),
+    // 4순위: thingproxy
+    () => fetch(`https://thingproxy.freeboard.io/fetch/${directUrl}`,
+               { signal: AbortSignal.timeout(8000) })
+          .then(r => r.json()),
+  ];
 
-async function proxyFetch(url) {
-  for (const makeProxy of PROXIES) {
+  for (const attempt of proxies) {
     try {
-      const res = await fetch(makeProxy(url), { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) continue;
-      const json = await res.json();
-      // allorigins: { contents: "..." }
-      // corsproxy: 직접 JSON
-      const raw = json.contents !== undefined ? json.contents : JSON.stringify(json);
-      return JSON.parse(raw);
+      const data = await attempt();
+      if (data && typeof data === 'object') return data;
     } catch(e) { continue; }
   }
   return null;
@@ -458,15 +469,16 @@ async function proxyFetch(url) {
 
 // ── 종목 실시간 데이터 ────────────────────────────────────────
 async function fetchStockPrice(code) {
-  // 네이버 모바일 종목 기본 API
-  const d = await proxyFetch(`${NAVER_BASE}/api/stock/${code}/basic`);
+  // api.stock.naver.com 은 CORS 허용 (실제 네이버 앱이 쓰는 API)
+  const d = await proxyFetch(`https://api.stock.naver.com/stock/${code}/basic`);
   if (!d) return null;
   try {
-    // 네이버 API 응답 구조 두 가지 모두 대응
-    const price = parseNum(d.closePrice ?? d.stockItemTotalInfos?.find(x => x.key === '현재가')?.value);
-    const changePct = parseNum(d.fluctuationsRatio ?? d.changeRate);
-    const change = parseNum(d.compareToPreviousClosePrice ?? d.compareToPreviousPrice);
-    const volume = parseNum(d.accumulatedTradingVolume ?? d.tradingVolume);
+    const price = parseNum(
+      d.closePrice ?? d.stockItemTotalInfos?.find(x => x.key === '현재가')?.value ?? d.dealPrice
+    );
+    const changePct = parseNum(d.fluctuationsRatio ?? d.changeRate ?? d.rateOfChange);
+    const change    = parseNum(d.compareToPreviousClosePrice ?? d.compareToPreviousPrice ?? d.priceChange);
+    const volume    = parseNum(d.accumulatedTradingVolume ?? d.tradingVolume ?? d.volume);
     if (price === 0) return null;
     return { price, changePct, change, volume };
   } catch(e) { return null; }
@@ -474,26 +486,27 @@ async function fetchStockPrice(code) {
 
 // ── 지수 데이터 ──────────────────────────────────────────────
 async function fetchIndex(indexCode) {
-  const d = await proxyFetch(`${NAVER_BASE}/api/index/${indexCode}/basic`);
+  const d = await proxyFetch(`https://api.stock.naver.com/index/${indexCode}/basic`);
   if (!d) return null;
   try {
     return {
-      value: parseNum(d.closePrice ?? d.indexValue),
-      change: parseNum(d.compareToPreviousPrice ?? d.priceChange),
-      changePct: parseNum(d.fluctuationsRatio ?? d.changeRate),
+      value:     parseNum(d.closePrice ?? d.indexValue ?? d.value),
+      change:    parseNum(d.compareToPreviousPrice ?? d.priceChange ?? d.change),
+      changePct: parseNum(d.fluctuationsRatio ?? d.changeRate ?? d.rateOfChange),
     };
   } catch(e) { return null; }
 }
 
 // ── 환율 데이터 ──────────────────────────────────────────────
 async function fetchFX(fxCode) {
-  const d = await proxyFetch(`${NAVER_BASE}/api/index/${fxCode}/basic`);
+  // 환율은 api.stock.naver.com/index/ 에서도 제공
+  const d = await proxyFetch(`https://api.stock.naver.com/index/${fxCode}/basic`);
   if (!d) return null;
   try {
     return {
-      value: parseNum(d.closePrice ?? d.basePrice),
-      change: parseNum(d.compareToPreviousPrice ?? d.priceChange),
-      changePct: parseNum(d.fluctuationsRatio ?? d.changeRate),
+      value:     parseNum(d.closePrice ?? d.basePrice ?? d.value),
+      change:    parseNum(d.compareToPreviousPrice ?? d.priceChange ?? d.change),
+      changePct: parseNum(d.fluctuationsRatio ?? d.changeRate ?? d.rateOfChange),
     };
   } catch(e) { return null; }
 }
@@ -1044,7 +1057,7 @@ function switchTab(market, sortKey, btn) {
   else { currentKosdaqSort = sortKey; renderStockTable(kosdaqData, 'kosdaqBody', sortKey); }
 }
 
-setInterval(() => loadAll(), 60000);
+// 자동 새로고침 제거 — 수동 새로고침만
 loadAll();
 // PWA Service Worker 등록 (https 환경에서만)
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
