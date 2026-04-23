@@ -273,6 +273,93 @@
     .sector-grid { grid-template-columns: repeat(2, 1fr); }
     .daytrader-cards { grid-template-columns: 1fr; }
   }
+
+  /* ── 모바일 전용 (480px 이하) ── */
+  @media (max-width: 480px) {
+    .container { padding: 12px 10px; }
+
+    /* 헤더 압축 */
+    h1 { font-size: 14px; }
+    .logo-icon { width: 28px; height: 28px; font-size: 14px; }
+    .last-update, #todayDate { font-size: 10px; }
+    .refresh-btn { padding: 6px 10px; font-size: 12px; }
+
+    /* 지수 카드 */
+    .index-bar { gap: 8px; }
+    .index-value { font-size: 16px; }
+    .index-change { font-size: 10px; }
+
+    /* 패널 헤더 */
+    .panel-header { padding: 12px 12px; flex-wrap: wrap; gap: 8px; }
+    .panel-title { font-size: 12px; }
+    .panel-badge { font-size: 9px; padding: 1px 6px; }
+
+    /* ── 인기주 테이블 모바일 최적화 ── */
+    .stock-table thead th {
+      padding: 8px 6px;
+      font-size: 10px;
+      letter-spacing: 0;
+    }
+    .stock-table td { padding: 10px 6px; vertical-align: middle; }
+
+    /* # 열 최소화 */
+    .stock-table th:first-child,
+    .stock-table td:first-child { width: 20px; padding: 10px 4px; }
+    .rank-num { font-size: 10px; }
+
+    /* 종목명 — 한 줄 강제 + 자동 축소 */
+    .stock-name {
+      font-size: 12px !important;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 80px;
+      display: block !important; /* flex 해제 */
+    }
+    .stock-code { font-size: 9px; margin-top: 1px; }
+
+    /* 패턴 뱃지 — 종목명 아래 별도 줄로 */
+    .mobile-pattern-row {
+      display: block;
+      margin-top: 3px;
+    }
+
+    /* 현재가 */
+    .price-num { font-size: 12px; }
+
+    /* 등락률 뱃지 */
+    .change-badge { font-size: 10px; padding: 2px 5px; }
+
+    /* 거래량 열 — 바 숨기고 숫자만 */
+    .vol-bar-bg { display: none; }
+    .vol-text { font-size: 10px; width: auto; }
+    .vol-bar-container { justify-content: flex-end; }
+
+    /* 테이블 열 너비 고정 */
+    .stock-table { table-layout: fixed; width: 100%; }
+    .stock-table th:nth-child(1) { width: 22px; }
+    .stock-table th:nth-child(2) { width: 100px; }
+    .stock-table th:nth-child(3) { width: 72px; }
+    .stock-table th:nth-child(4) { width: 64px; }
+    .stock-table th:nth-child(5) { width: 44px; }
+
+    /* 단테/준석 카드 */
+    .dt-card-header { flex-direction: column; gap: 6px; }
+    .dt-name { font-size: 13px; }
+    .dt-price { font-size: 13px; }
+    .strategy-text { font-size: 11px; }
+    .dt-timing { padding: 8px 12px 10px; }
+    .timing-chip { font-size: 9px; padding: 2px 7px; }
+
+    /* 섹터 그리드 */
+    .sector-grid { grid-template-columns: repeat(2, 1fr); }
+    .sector-change { font-size: 14px; }
+
+    /* AI 분석 카드 */
+    .ai-stocks-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .ai-stock-card { padding: 10px; }
+    .ai-card-name { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -319,7 +406,7 @@
         </div>
       </div>
       <table class="stock-table" id="kospiTable">
-        <thead><tr><th style="width:32px">#</th><th>종목</th><th>현재가</th><th>등락률</th><th>거래량</th></tr></thead>
+        <thead><tr><th>#</th><th>종목</th><th>현재가</th><th>등락률</th><th>거래량</th></tr></thead>
         <tbody id="kospiBody"><tr><td colspan="5" style="padding:40px;text-align:center;color:var(--muted)">로딩 중...</td></tr></tbody>
       </table>
     </div>
@@ -334,7 +421,7 @@
         </div>
       </div>
       <table class="stock-table" id="kosdaqTable">
-        <thead><tr><th style="width:32px">#</th><th>종목</th><th>현재가</th><th>등락률</th><th>거래량</th></tr></thead>
+        <thead><tr><th>#</th><th>종목</th><th>현재가</th><th>등락률</th><th>거래량</th></tr></thead>
         <tbody id="kosdaqBody"><tr><td colspan="5" style="padding:40px;text-align:center;color:var(--muted)">로딩 중...</td></tr></tbody>
       </table>
     </div>
@@ -583,21 +670,20 @@ function renderStockTable(data, tbodyId, sortKey) {
     // 패턴 뱃지 (AI 분석 후 붙음)
     const pm = s.pattern ? PATTERN_META[s.pattern] : null;
     const patternBadge = pm
-      ? `<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:5px;
-                      background:${pm.color}18;color:${pm.color};border:1px solid ${pm.color}33">
+      ? `<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;
+                      background:${pm.color}18;color:${pm.color};border:1px solid ${pm.color}33;
+                      display:inline-block;line-height:1.4">
            ${pm.label}
          </span>`
-      : `<span style="font-size:9px;color:var(--border);padding:2px 6px;border-radius:4px;
-                      background:var(--surface2);border:1px solid var(--border);margin-left:5px">···</span>`;
+      : `<span style="font-size:9px;color:var(--muted);padding:2px 5px;border-radius:4px;
+                      background:var(--surface2);border:1px solid var(--border);
+                      display:inline-block;line-height:1.4">···</span>`;
 
     return `<tr class="fade-in">
       <td><span class="rank-num">${i+1}</span></td>
       <td>
-        <div class="stock-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px">
-          ${s.name}
-          ${s.isLive === false ? '<span style="font-size:9px;color:var(--muted);background:var(--border);padding:1px 4px;border-radius:3px">캐시</span>' : ''}
-          ${patternBadge}
-        </div>
+        <div class="stock-name">${s.name}${s.isLive === false ? '&nbsp;<span style="font-size:9px;color:var(--muted);background:var(--border);padding:1px 4px;border-radius:3px">캐시</span>' : ''}</div>
+        <div class="mobile-pattern-row">${patternBadge}</div>
         <div class="stock-code">${s.code}</div>
       </td>
       <td><span class="price-num ${dir === 'up' ? 'up-text' : dir === 'down' ? 'down-text' : ''}">${fmtPrice(s.price)}</span></td>
